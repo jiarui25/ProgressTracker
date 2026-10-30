@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>完成进度可视化</title>
+<style>
+  :root {
+    --bg: #0a0d12;
+    --text: #e9eff7;
+    --muted: #8b98a9;
+    --line: rgba(255, 255, 255, .09);
+    --panel: rgba(255, 255, 255, .04);
+    --teal: #35d0ba;
+    --blue: #5b9dff;
+    --violet: #a78bfa;
+    --radius: 18px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 48px 20px 64px;
+    background:
+      radial-gradient(1100px 560px at 12% -12%, rgba(53, 208, 186, .16), transparent 62%),
+      radial-gradient(900px 520px at 112% 4%, rgba(167, 139, 250, .16), transparent 58%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+                 "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { width: min(920px, 100%); }
+
+  /* ---------- 标题 ---------- */
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+  h1 {
+    margin: 0 0 10px;
+    font-size: clamp(24px, 3.4vw, 34px);
+    font-weight: 600;
+    letter-spacing: -.01em;
+  }
+  .lede {
+    margin: 0 0 28px;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
+  /* ---------- 主卡片 ---------- */
+  .card {
+    display: grid;
+    grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+    gap: 44px;
+    align-items: center;
+    padding: 40px;
+    border: 1px solid var(--line);
+    border-radius: 26px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .018));
+    box-shadow: 0 40px 90px -40px rgba(0, 0, 0, .95), inset 0 1px 0 rgba(255, 255, 255, .06);
+    backdrop-filter: blur(18px);
+  }
+
+  /* ---------- 环形进度 ---------- */
+  .ring-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 300px;
+    aspect-ratio: 1;
+    margin: 0 auto;
+  }
+  .ring { width: 100%; height: 100%; display: block; overflow: visible; }
+
+  .ring .track {
+    fill: none;
+    stroke: rgba(255, 255, 255, .07);
+    stroke-width: 14;
+  }
+  .ring .bar {
+    fill: none;
+    stroke: url(#ringGrad);
+    stroke-width: 14;
+    stroke-linecap: round;
+    transition: stroke .3s ease;
+  }
+  .ring-wrap.is-done .bar { filter: url(#ringGlow); }
+
+  .ring-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    pointer-events: none;
+  }
+  .pct {
+    font-size: clamp(40px, 8vw, 56px);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -.03em;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(120deg, var(--teal), var(--blue) 55%, var(--violet));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .pct .unit {
+    font-size: .42em;
+    font-weight: 500;
+    margin-left: 2px;
+    letter-spacing: 0;
+  }
+  .status {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: .04em;
+    padding: 4px 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .03);
+    white-space: nowrap;
+  }
+  .ring-wrap.is-done .status {
+    color: #0b1210;
+    background: linear-gradient(120deg, var(--teal), var(--blue));
+    border-color: transparent;
+    font-weight: 600;
+  }
+
+  /* ---------- 表单 ---------- */
+  .controls { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+
+  .fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .field-label {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: .06em;
+  }
+
+  .stepper {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--panel);
+    transition: border-color .2s ease, box-shadow .2s ease;
+  }
+  .stepper:focus-within {
+    border-color: rgba(91, 157, 255, .55);
+    box-shadow: 0 0 0 3px rgba(91, 157, 255, .12);
+  }
+  .stepper button {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .06);
+    color: var(--text);
+    font-size: 17px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background .15s ease, transform .1s ease;
+  }
+  .stepper button:hover { background: rgba(255, 255, 255, .13); }
+  .stepper button:active { transform: scale(.94); }
+  .stepper input {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    text-align: center;
+    font: inherit;
+    font-size: 18px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    outline: none;
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  .stepper input::-webkit-outer-spin-button,
+  .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+  /* ---------- 统计 ---------- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: rgba(255, 255, 255, .02);
+  }
+  .stat {
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+  }
+  .stat + .stat { border-left: 1px solid var(--line); }
+  .stat .k { font-size: 11px; color: var(--muted); letter-spacing: .08em; }
+  .stat .v {
+    font-size: 20px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.01em;
+  }
+  .stat .v.accent { color: var(--teal); }
+
+  /* ---------- 进度条 ---------- */
+  .bar {
+    position: relative;
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .07);
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--teal), var(--blue) 60%, var(--violet));
+    box-shadow: 0 0 18px rgba(91, 157, 255, .45);
+  }
+  .bar .tick {
+    position: absolute;
+    top: 0;
+    width: 1px;
+    height: 100%;
+    background: rgba(10, 13, 18, .55);
+  }
+  .bar-legend {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- 操作按钮 ---------- */
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  .btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 11px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .045);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, transform .1s ease;
+  }
+  .btn:hover { background: rgba(255, 255, 255, .1); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary {
+    border-color: transparent;
+    background: linear-gradient(120deg, var(--teal), var(--blue));
+    color: #071016;
+    font-weight: 600;
+  }
+  .btn.primary:hover { filter: brightness(1.08); }
+
+  .hint {
+    margin: 18px 0 0;
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: .02em;
+  }
+
+  @media (max-width: 760px) {
+    .card {
+      grid-template-columns: 1fr;
+      gap: 32px;
+      padding: 28px 22px 30px;
+    }
+    .ring-wrap { max-width: 240px; }
+    .fields { grid-template-columns: 1fr; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bar-fill, .btn, .stepper button { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="eyebrow">Progress Tracker</div>
+    <h1>完成进度可视化</h1>
+    <p class="lede">输入总事项与已完成数量，进度环、百分比与剩余量会同步刷新。数据保存在本地浏览器，刷新后不丢失。</p>
+  </header>
+
+  <section class="card">
+    <!-- 环形进度 -->
+    <div class="ring-wrap" id="ringWrap">
+      <svg class="ring" viewBox="0 0 220 220" aria-hidden="true">
+        <defs>
+          <linearGradient id="ringGrad" gradientUnits="userSpaceOnUse"
+                          x1="204" y1="110" x2="16" y2="110">
+            <stop offset="0%" stop-color="#35d0ba"/>
+            <stop offset="55%" stop-color="#5b9dff"/>
+            <stop offset="100%" stop-color="#a78bfa"/>
+          </linearGradient>
+          <filter id="ringGlow" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="7" result="blur"/>
+            <feMerge>
+              <feMergeNode in="blur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
+        <circle class="track" cx="110" cy="110" r="86"/>
+        <circle class="bar" id="ringBar" cx="110" cy="110" r="86"
+                transform="rotate(-90 110 110)"/>
+      </svg>
+      <div class="ring-center">
+        <div class="pct"><span id="pctText">0</span><span class="unit">%</span></div>
+        <div class="status" id="statusText">尚未开始</div>
+      </div>
+    </div>
+
+    <!-- 控件 -->
+    <div class="controls">
+      <div class="fields">
+        <label class="field">
+          <span class="field-label">总事项数</span>
+          <div class="stepper">
+            <button type="button" data-for="totalInput" data-step="-1" aria-label="减少总事项数">−</button>
+            <input id="totalInput" type="number" min="0" step="1" value="10" inputmode="numeric">
+            <button type="button" data-for="totalInput" data-step="1" aria-label="增加总事项数">+</button>
+          </div>
+        </label>
+
+        <label class="field">
+          <span class="field-label">已完成数</span>
+          <div class="stepper">
+            <button type="button" data-for="doneInput" data-step="-1" aria-label="减少已完成数">−</button>
+            <input id="doneInput" type="number" min="0" step="1" value="0" inputmode="numeric">
+            <button type="button" data-for="doneInput" data-step="1" aria-label="增加已完成数">+</button>
+          </div>
+        </label>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <span class="k">已完成</span>
+          <span class="v accent" id="statDone">0</span>
+        </div>
+        <div class="stat">
+          <span class="k">剩余</span>
+          <span class="v" id="statLeft">10</span>
+        </div>
+        <div class="stat">
+          <span class="k">总计</span>
+          <span class="v" id="statTotal">10</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="bar" id="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="bar-fill" id="barFill"></div>
+          <i class="tick" style="left:25%"></i>
+          <i class="tick" style="left:50%"></i>
+          <i class="tick" style="left:75%"></i>
+        </div>
+        <div class="bar-legend">
+          <span>0%</span><span>50%</span><span>100%</span>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary" type="button" id="btnStep">完成一项</button>
+        <button class="btn" type="button" id="btnAll">全部完成</button>
+        <button class="btn" type="button" id="btnClear">清零重来</button>
+      </div>
+    </div>
+  </section>
+
+  <p class="hint">提示：可直接键盘输入数字，也可用 ↑ ↓ 微调</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  const STORAGE_KEY = 'progress-viz-state-v1';
+  const RADIUS = 86;
+  const CIRC = 2 * Math.PI * RADIUS;
+
+  const $ = (id) => document.getElementById(id);
+  const totalInput = $('totalInput');
+  const doneInput = $('doneInput');
+  const ringBar = $('ringBar');
+  const ringWrap = $('ringWrap');
+  const pctText = $('pctText');
+  const statusText = $('statusText');
+  const statDone = $('statDone');
+  const statLeft = $('statLeft');
+  const statTotal = $('statTotal');
+  const bar = $('bar');
+  const barFill = $('barFill');
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let shown = 0;      // 当前动画值
+  let target = 0;     // 目标百分比
+  let rafId = null;
+
+  ringBar.style.strokeDasharray = CIRC;
+  ringBar.style.strokeDashoffset = CIRC;
+
+  /* ---------- 状态读取与规范化 ---------- */
+
+  function toInt(value) {
+    const n = parseInt(value, 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function readState() {
+    const total = Math.max(0, toInt(totalInput.value));
+    const done = Math.max(0, toInt(doneInput.value));
+    return { total, done, clampedDone: Math.min(done, total) };
+  }
+
+  function normalizeInputs() {
+    const total = Math.max(0, toInt(totalInput.value));
+    let done = Math.max(0, toInt(doneInput.value));
+    if (done > total) done = total;
+    totalInput.value = total;
+    doneInput.value = done;
+    return { total, done };
+  }
+
+  /* ---------- 渲染 ---------- */
+
+  function statusFor(pct, total) {
+    if (total === 0) return '还没有事项';
+    if (pct >= 100) return '全部完成';
+    if (pct === 0) return '尚未开始';
+    if (pct < 25) return '刚刚起步';
+    if (pct < 50) return '渐入佳境';
+    if (pct < 75) return '已经过半';
+    return '最后冲刺';
+  }
+
+  function paintRing(value) {
+    const offset = CIRC * (1 - value / 100);
+    ringBar.style.strokeDashoffset = offset;
+    pctText.textContent = Math.round(value);
+    barFill.style.width = value + '%';
+  }
+
+  function renderStats(total, done) {
+    statDone.textContent = done;
+    statLeft.textContent = Math.max(0, total - done);
+    statTotal.textContent = total;
+  }
+
+  function animateTo(next) {
+    target = next;
+    if (reduceMotion) {
+      shown = next;
+      paintRing(shown);
+      return;
+    }
+    if (rafId !== null) cancelAnimationFrame(rafId);
+
+    const from = shown;
+    const delta = target - from;
+    const DURATION = 520;
+    const start = performance.now();
+
+    const tick = (now) => {
+      const p = Math.min(1, (now - start) / DURATION);
+      const eased = 1 - Math.pow(1 - p, 3);   // easeOutCubic
+      shown = from + delta * eased;
+      paintRing(shown);
+      if (p < 1) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        shown = target;
+        paintRing(shown);
+        rafId = null;
+      }
+    };
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function update() {
+    const { total, done, clampedDone } = readState();
+    const pct = total > 0 ? (clampedDone / total) * 100 : 0;
+
+    renderStats(total, clampedDone);
+    animateTo(pct);
+
+    const label = statusFor(Math.round(pct), total);
+    statusText.textContent = label;
+    ringWrap.classList.toggle('is-done', total > 0 && clampedDone >= total);
+    bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+    bar.setAttribute('aria-valuetext', `${Math.round(pct)}% 已完成`);
+
+    persist(total, done);
+  }
+
+  /* ---------- 持久化 ---------- */
+
+  function persist(total, done) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ total, done }));
+    } catch (e) { /* 隐私模式下忽略 */ }
+  }
+
+  function restore() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (Number.isFinite(data.total)) totalInput.value = Math.max(0, data.total);
+      if (Number.isFinite(data.done)) doneInput.value = Math.max(0, data.done);
+    } catch (e) { /* 忽略损坏数据 */ }
+  }
+
+  /* ---------- 事件绑定 ---------- */
+
+  [totalInput, doneInput].forEach((input) => {
+    input.addEventListener('input', update);
+    input.addEventListener('change', () => {
+      normalizeInputs();
+      update();
+    });
+    input.addEventListener('blur', () => {
+      normalizeInputs();
+      update();
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') input.blur();
+    });
+  });
+
+  document.querySelectorAll('.stepper button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const input = $(btn.dataset.for);
+      const step = parseInt(btn.dataset.step, 10);
+      const next = Math.max(0, toInt(input.value) + step);
+      input.value = next;
+      normalizeInputs();
+      update();
+    });
+  });
+
+  $('btnStep').addEventListener('click', () => {
+    const { total, done } = normalizeInputs();
+    doneInput.value = Math.min(total, done + 1);
+    update();
+  });
+
+  $('btnAll').addEventListener('click', () => {
+    const { total } = normalizeInputs();
+    doneInput.value = total;
+    update();
+  });
+
+  $('btnClear').addEventListener('click', () => {
+    doneInput.value = 0;
+    normalizeInputs();
+    update();
+  });
+
+  /* ---------- 启动 ---------- */
+
+  restore();
+  normalizeInputs();
+  // 首次进入时若本地无记录，从 0 动画到当前比例
+  shown = 0;
+  update();
+})();
+</script>
+</body>
+</html>
